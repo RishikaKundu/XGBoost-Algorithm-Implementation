@@ -4,6 +4,8 @@
 
 This project introduces the Extreme Gradient Boosting (XGBoost) algorithm, focusing on its application in classification using decision trees. XGBoost enhances prediction accuracy by building trees sequentially, where each tree corrects errors from the previous one. The tutorial covers the algorithm, tuning parameters, and a comparison with Random Forest models.
 
+**Note:** To see code for the project, download HTML file and view on web browser. 
+
 **Key Topics**
 
 * Boosting Basics: Explains boosting as a sequential decision tree algorithm to reduce residual errors.
