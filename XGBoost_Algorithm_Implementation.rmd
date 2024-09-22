@@ -1,0 +1,209 @@
+---
+title: "Your Title"
+subtitle: "Stat 253"
+author: "Your Names"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_download: true
+---
+
+```{r include=FALSE}
+# Load packages (include others that are needed)
+library(tidyverse)
+library(tidymodels)
+
+# Resolves package conflicts by preferring tidymodels functions
+tidymodels_prefer()
+```
+
+# Research Goals
+
+Briefly describe your goals for this report. Provide some context to understand your goals.
+
+# Data
+
+Briefly describe your training data. You may use 1 visualization in this section.
+
+
+```{r message=FALSE, warning = FALSE, echo=FALSE}
+# read in data
+# clean data, if necessary
+```
+
+```{r message=FALSE, warning = FALSE, echo=FALSE}
+# visualization
+```
+
+# Model Building
+
+Describe the process by which you came up with the final model. This does not include every step you took but rather the final path your group decided on to build a model. 
+
+# Implementation
+
+We used tidymodels to implement this model building process. See code below for full details.
+
+<details>
+<summary>View Code</summary>
+
+
+```{r message=FALSE, warning = FALSE}
+#Include all model building code in here.
+```
+
+
+
+</details>
+
+# Model Evaluation
+
+Evaluate your final model based on the four questions: Is it strong? Is it good? Is it accurate in predictions? Is it fair? Include evidence to support your answers. You may use up to 3 visualizations in this section. 
+
+```{r message=FALSE, warning = FALSE, echo=FALSE}
+# visualization
+```
+
+# Contributions
+
+Describe each student's concrete contribution to this project. 
+
+
+```{r}
+xgb_spec <-
+  boost_tree(
+    trees = tune(),
+    min_n = tune(),
+    mtry = tune(),
+    learn_rate = 0.01
+  ) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+xgb_wf <- workflow(bb_rec, xgb_spec)
+```
+
+```{r}
+land <- read.csv("https://bcheggeseth.github.io/253_spring_2024/data/land_cover.csv") %>% 
+  rename(type = class) %>% 
+  mutate(type = as.factor(type))
+
+land_split <- land %>%
+  initial_split(strata = type)
+land_train <- training(land_split)
+land_test <- testing(land_split)
+
+set.seed(234)
+land_folds <- vfold_cv(land_train, strata = type)
+
+land_rec <-
+  recipe(type ~ Mean_G + NDVI + Bright_100 + SD_NIR,
+  data = land_train
+  ) %>%
+  step_unknown(all_nominal_predictors()) %>%
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  step_nzv(all_predictors())
+
+xgb_spec <-
+  boost_tree(
+    trees = tune(),
+    min_n = tune(),
+    mtry = tune(),
+    learn_rate = 0.01
+  ) %>%
+  set_engine("xgboost") %>%
+  set_mode("classification")
+
+xgb_wf <- workflow(land_rec, xgb_spec)
+
+library(finetune)
+doParallel::registerDoParallel()
+
+set.seed(345)
+xgb_rs <- tune_race_anova(
+  xgb_wf,
+  resamples = land_folds,
+  grid = 15,
+  metrics = metric_set(mn_log_loss),
+  control = control_race(verbose_elim = TRUE)
+)
+
+xgb_last <- xgb_wf %>%
+  finalize_workflow(select_best(xgb_rs, metric = "mn_log_loss")) %>%
+  last_fit(land_split)
+
+collect_predictions(xgb_last) %>%
+  mn_log_loss(type, 2:10)
+
+
+collect_predictions(xgb_last)  %>%
+  cbind(land_test) %>% 
+  conf_mat(
+    truth = type,
+    estimate = .pred_class
+  )
+
+
+```
+! [yjgjkh](/Users/rishikakundu/Documents/Stat 253/Group_Assignment_2/image1.jpg) 
+
+
+! [yjgjkh](/Users/rishikakundu/Documents/Stat 253/Group_Assignment_2/image2.jpg) 
+
+
+```{r}
+set.seed(253)
+
+rf_spec <- rand_forest()  %>%
+  set_mode("classification") %>%
+  set_engine(engine = "ranger") %>% 
+  set_args(
+    mtry = NULL,
+    trees = 500,
+    min_n = 2,
+    probability = TRUE, # give classifications, not probability calculations
+    importance = "impurity"
+  
+  )
+land_forest <- rf_spec %>% 
+  fit(type ~ Mean_G + NDVI + Bright_100 + SD_NIR, data = land_train)
+
+land_forest %>% 
+  augment(new_data = land_train) %>%
+  mn_log_loss(type, 2:10)
+
+```
+
+```{r}
+set.seed(253)
+rf_spec <- rand_forest()  %>%
+  set_mode("classification") %>%
+  set_engine(engine = "ranger") %>%
+  set_args(
+    mtry = NULL,
+    trees = 500,
+    min_n = 2,
+    probability = FALSE, # give classifications, not probability calculations
+    importance = "impurity", # use Gini index to measure variable importance
+    metrics = metric_set(mn_log_loss)
+  )
+land_forest <- rf_spec %>%
+  fit(type ~ Mean_G + NDVI + Bright_100 + SD_NIR, data = land_train)
+land_forest %>%
+  extract_fit_engine() %>%
+  pluck("confusion.matrix") %>%
+  t()
+land_forest %>%
+  extract_fit_engine() %>%
+  pluck("variable.importance") %>%
+  sort(decreasing = TRUE)
+land_forest %>%
+  predict(new_data = land_train) %>%
+  cbind(land_train) %>%
+  conf_mat(
+    truth = type,
+    estimate = .pred_class
+  )
+land_forest
+```
+
